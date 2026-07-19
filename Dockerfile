@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1.6
 
 # =============================================================================
-# Builder stage. Produces an armv8.2 / Cortex-A55-tuned rtorrent 0.16.18 binary.
+# Builder stage. Produces an armv8.2 / Cortex-A55-tuned rtorrent 0.16.18 binary
+# on debian:trixie-slim with gcc 14 and glibc 2.41.
 #
-# Tune flags are only valid on a real aarch64 build host; they are a no-op
-# when QEMU is emulating arm64 from an amd64 GitHub runner because the
-# underlying instruction set is still emulated arm64.
+# Tune flags are valid on a real aarch64 build host. They also work when QEMU
+# is emulating arm64 from an amd64 runner because the ISA seen by gcc is still
+# arm64 so -mcpu=cortex-a55 is accepted. The runner is natively arm64 (GH
+# Actions ubuntu-24.04-arm) so these flags compile directly on real hardware.
 #
 # Tune recipe (Cortex-A55 / RK3568):
 #   -march=armv8.2-a+crypto+crc+simd  enable AES/SHA2/PMULL/CRC32/NEON ISA
@@ -15,10 +17,10 @@
 #   -fgraphite -fdevirtualize-at-ltrans    Graphite on hot loops + cheaper devirt at LTRANS
 #   -fno-semantic-interposition        hide lib symbols so callers inline our code
 #   -fipa-pta                          interprocedural points-to (better aliasing)
-# Build runs as TARGETPLATFORM (arm64, emulated by QEMU on amd64 runners) so
-# gcc inside the stage is arm64 gcc and accepts the cortex-a55 flags.
+# No --platform=... override here. The builder inherits TARGETPLATFORM (arm64)
+# and on ubuntu-24.04-arm that means native arm64 gcc, no emulation.
 # =============================================================================
-FROM debian:bookworm-slim AS builder
+FROM debian:trixie-slim AS builder
 
 ARG RTORRENT_VERSION=0.16.18
 ARG LIBTORRENT_VERSION=0.16.18
@@ -32,7 +34,7 @@ ENV LDFLAGS="-Wl,-O1 -Wl,--as-needed -Wl,-z,now -Wl,-z,relro -Wl,--hash-style=gn
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl xz-utils pkg-config make \
-        gcc g++ g++-12 libc6-dev zlib1g-dev \
+        gcc g++ libc6-dev zlib1g-dev \
         libssl-dev libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -92,10 +94,10 @@ RUN cd rtorrent \
 RUN /usr/local/bin/rtorrent -h 2>&1 | head -1 || true
 
 # =============================================================================
-# Runtime stage. Debian bookworm-slim (glibc 2.36, arm64 with cortex-a55
-# tuned memcpy/memmove/atomics in glibc 2.36+). Minimal footprint (~25 MB).
+# Runtime stage. Debian trixie-slim (glibc 2.41, arm64 with cortex-a55
+# tuned memcpy/memmove/atomics in glibc 2.41+). Minimal footprint (~29 MB).
 # =============================================================================
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 ARG RTORRENT_VERSION=0.16.18
 LABEL org.opencontainers.image.title="rtorrent (armv8.2 / Cortex-A55 tuned)" \
@@ -105,7 +107,7 @@ LABEL org.opencontainers.image.title="rtorrent (armv8.2 / Cortex-A55 tuned)" \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libstdc++6 zlib1g libssl3 libcurl4 ca-certificates netcat-openbsd \
+        libstdc++6 zlib1g libssl3t64 libcurl4t64 ca-certificates netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* /var/cache/* /var/log/* /tmp/*
 
 # Non-root user. UID/GID 1000 by default; override with --user or env at runtime.

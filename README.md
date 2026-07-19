@@ -73,20 +73,20 @@ network.rpc.use_xmlrpc.set = true
 network.rpc.use_jsonrpc.set = true
 ```
 
-### Distro: `debian:bookworm-slim` (glibc 2.36)
+### Distro: `debian:trixie-slim` (glibc 2.41)
 
 Picked for the **best sustained throughput** on the RK3568 specifically — not the smallest image and not the trendiest. The reasoning:
 
-| Concern | Debian bookworm-slim | Alpine 3.20 (musl) | Distroless (gcr.io/distroless/cc) |
+| Concern | Debian trixie-slim | Alpine 3.20 (musl) | Distroless (gcr.io/distroless/cc) |
 | --- | --- | --- | --- |
-| Cortex-A55-tuned `memcpy`/`memmove` strings | Yes (glibc 2.36 ships armv8.2-tuned paths used at every piece-hash boundary) | No (musl is generic C) | Yes (same glibc as Debian) |
+| Cortex-A55-tuned `memcpy`/`memmove` strings | Yes (glibc 2.41 ships armv8.2-tuned paths used at every piece-hash boundary) | No (musl is generic C) | Yes (same glibc as Debian) |
 | Size (runtime layer) | ~22 MB | ~13 MB | ~20 MB |
 | Has `bash`/`sh`/tools for debugging on device | Yes | Yes (busybox) | No |
-| C++20 support in stock gcc | Yes (gcc 12) | Yes (gcc 13) | N/A (no compiler in image) |
+| C++20 support in stock gcc | Yes (gcc 14) | Yes (gcc 13) | N/A (no compiler in image) |
 | rtorrent historical compatibility | Excellent (most distros ship this) | Mixed (musl lacks `execinfo`, `posix_spawn` `close_range` auto-detected and disabled — minor features lost) | Fine, but you cannot run a shell in it |
 | ASLR / allocator overhead | glibc malloc, competitive | musl allocator, lower RSS but slower under high-rate SCGI churn | Same Debian glibc |
 
-**Verdict:** Debian bookworm-slim wins for the Rock 3A workload — rtorrent is a long-running C++ daemon that hammers small allocations on hash-piece boundaries and does frequent small SCGI round-trips with Flood. glibc 2.36 already carries Cortex-A55-tuned memory/string routines, so the runtime image benefits from the same target microarchitecture as the builder. The ~9 MB extra surface over Alpine is negligible for a daemon that sits in RAM for weeks.
+**Verdict:** Debian trixie-slim wins for the Rock 3A workload — rtorrent is a long-running C++ daemon that hammers small allocations on hash-piece boundaries and does frequent small SCGI round-trips with Flood. glibc 2.41 already carries Cortex-A55-tuned memory/string routines, so the runtime image benefits from the same target microarchitecture as the builder. The ~9 MB extra surface over Alpine is negligible for a daemon that sits in RAM for weeks.
 
 ### Build flags (Cortex-A55 / RK3568)
 
@@ -234,8 +234,8 @@ It reports whether rTorrent has bound the SCGI port. A real SCGI-level probe (se
 | --- | --- | --- |
 | rakshasa/rtorrent | `0.16.18` (2026-07-17) | Latest stable; C++20, bundled `tinyxml2` + `nlohmann/json` |
 | rakshasa/libtorrent | `0.16.18` (2026-07-17) | Paired release with rtorrent 0.16.18 |
-| Builder | `debian:bookworm-slim` | gcc 12, autotools |
-| Runtime | `debian:bookworm-slim` | glibc 2.36, libstdc++6, zlib1g, ca-certificates, netcat-openbsd |
+| Builder | `debian:trixie-slim` | gcc 14, autotools |
+| Runtime | `debian:trixie-slim` | glibc 2.41, libstdc++6, zlib1g, ca-certificates, netcat-openbsd |
 
 Override at build time with `--build-arg RTORRENT_VERSION=…`.
 

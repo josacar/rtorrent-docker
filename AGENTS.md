@@ -13,7 +13,7 @@ The image is **arm64 only** and lives on GHCR. Everything in the repo is a packa
 ## Project facts to keep in mind
 
 - **Target ISA/microarch:** ARMv8.2-A, Cortex-A55. The Dockerfile's `OPT_FLAGS` is the canonical place to tune. If you change it, justify the change in the comment block above the `ENV OPT_FLAGS=...` line.
-- **Builder and runtime base:** `debian:bookworm-slim` (gcc 12, glibc 2.36). Do not switch to Alpine/musl without re-evaluating `libtorrent`'s glibc-specific configure probes (`execinfo`, `posix_spawn` `close_range`, etc.) — see the comparison table in `README.md`.
+- **Builder and runtime base:** `debian:trixie-slim` (gcc 14, glibc 2.41). Do not switch to Alpine/musl without re-evaluating `libtorrent`'s glibc-specific configure probes (`execinfo`, `posix_spawn` `close_range`, etc.) — see the comparison table in `README.md`.
 - **Upstream versions** are pinned to `0.16.18` for both libtorrent and rtorrent; match them (they release in lockstep). Override at build time via build-args if you need to test an older release.
 - **C++20 is mandatory** for rtorrent 0.16.x. The stock Debian `g++-12` satisfies it.
 - **The published manifest is `linux/arm64` only.** There is no amd64 image; that is intentional. If you want a multi-arch manifest you'll need to rewrite `.github/workflows/build.yml`.
@@ -116,7 +116,7 @@ If changing tags/labels, edit the `tags:` multi-line block under `steps.meta`. T
 ## Things not to do
 
 - Don't add `docker compose` YAML files unless it's to extend the documented Flood pairing. The compose snippet in `README.md` is illustrative.
-- Don't pin to a musl-based image to "save space" without a benchmark that beats the glibc 2.36-Cortex-A55-tuned string routines in throughput. Surface size is not the priority for this image.
+- Don't pin to a musl-based image to "save space" without a benchmark that beats the glibc 2.41-Cortex-A55-tuned string routines in throughput. Surface size is not the priority for this image.
 - Don't change the license. The packaging layer is MIT; rakshasa binaries it ships are GPL-2.0-or-later. This split is documented in both `LICENSE` and `README.md`.
 - Don't add multi-arch manifests in passing — that's a deliberate single-arch image. If you need a fallback for non-Rock arm64 hosts, prefer a separate workflow or stage over loosening the build flags.
 - Don't add a `--platform=$BUILDPLATFORM` to the `builder` stage. The Cortex-A55 flags are only valid on arm64 gcc; making the builder match the host would fail on amd64.
