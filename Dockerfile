@@ -20,8 +20,6 @@
 # =============================================================================
 FROM debian:bookworm-slim AS builder
 
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
 ARG RTORRENT_VERSION=0.16.18
 ARG LIBTORRENT_VERSION=0.16.18
 ARG PARALLELISM=""
@@ -112,11 +110,15 @@ COPY --from=builder /usr/local/lib/libtorrent.so* /usr/local/lib/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY rtorrent.rc /config/rtorrent.rc.default
 
+# Seed /config/rtorrent.rc from the default on first start of an empty config volume.
 RUN ldconfig \
     && chmod 0755 /usr/local/bin/docker-entrypoint.sh \
-    && chmod 0644 /config/rtorrent.rc.default \
-    # Seed /config/rtorrent.rc from the default on first start of an empty config volume.
-    && cp /config/rtorrent.rc.default /config/rtorrent.rc 2>/dev/null || true
+    && chmod 0644 /config/rtorrent.rc.default
+
+# Copy the default config into /config so rtorrent starts even with an empty
+# config volume. This is a one-shot seed; the entrypoint won't overwrite a
+# non-empty /config/rtorrent.rc at runtime.
+RUN cp /config/rtorrent.rc.default /config/rtorrent.rc 2>/dev/null || true
 
 USER rtorrent
 WORKDIR /data

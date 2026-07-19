@@ -1,7 +1,7 @@
 name: build-and-publish
 
 # Builds an arm64-only, Cortex-A55-tuned rtorrent 0.16.18 image and pushes
-# it to ghcr.io/<owner>/rtorrent-docker. QEMU emulation means the build runs
+# it to ghcr.io/josacar/rtorrent-docker. QEMU emulation means the build runs
 # on a standard ubuntu-latest runner; expect ~25-35 minutes per build.
 
 on:

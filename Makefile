@@ -2,7 +2,7 @@
 
 IMAGE ?= rtorrent:rock3a
 PLATFORM ?= linux/arm64
-GHCR ?= ghcr.io/$(USER)/rtorrent-docker
+GHCR ?= ghcr.io/josacar/rtorrent-docker
 
 # Pretty help
 help: ## Show this help
