@@ -33,6 +33,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates curl xz-utils pkg-config make \
         gcc g++ g++-12 libc6-dev zlib1g-dev \
+        libssl-dev libcurl4-openssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -104,7 +105,7 @@ LABEL org.opencontainers.image.title="rtorrent (armv8.2 / Cortex-A55 tuned)" \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        libstdc++6 zlib1g ca-certificates netcat-openbsd \
+        libstdc++6 zlib1g libssl3 libcurl4 ca-certificates netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* /var/cache/* /var/log/* /tmp/*
 
 # Non-root user. UID/GID 1000 by default; override with --user or env at runtime.
