@@ -158,7 +158,6 @@ To mount your own `rtorrent.rc`, bind-mount it at `/config/rtorrent.rc` and the 
 | `/config` | The `rtorrent.rc` + log |
 | `/session` | rTorrent resume state (do **not** share across containers) |
 | `/watch` | Drop `*.torrent` here to auto-load+start them |
-| `/rpc` | Reserved for an SCGI unix socket if you prefer that over TCP |
 
 ## Exposed ports
 

@@ -28,7 +28,6 @@ env:
 
 jobs:
   build:
-    # Native arm64 runner. cortex-a55 gcc flags are valid directly.
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
@@ -67,6 +66,7 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/arm64
+          load: true   # make image available in local docker for smoke test
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -77,6 +77,31 @@ jobs:
             LIBTORRENT_VERSION=${{ github.event.inputs.rtorrent_version || '0.16.18' }}
           cache-from: type=gha,scope=arm64
           cache-to:   type=gha,mode=max,scope=arm64
+
+      - name: Smoke test
+        if: always()
+        run: |
+          IMAGE_ID=$(docker images --filter "reference=ghcr.io/josacar/rtorrent-docker" --format "{{.ID}}" | head -1)
+          if [ -z "$IMAGE_ID" ]; then
+            echo "No image found to test"
+            exit 1
+          fi
+          echo "Testing image $IMAGE_ID"
+          docker run -d --name rtorrent-test "$IMAGE_ID"
+          # Wait up to 20s for SCGI port 5000 to be reachable inside the container
+          for i in $(seq 20); do
+            sleep 1
+            docker exec rtorrent-test nc -z 127.0.0.1 5000 2>/dev/null && break
+          done
+          if docker exec rtorrent-test nc -z 127.0.0.1 5000 2>/dev/null; then
+            echo "SCGI probe passed after $(docker inspect --format='{{.State.Health.Status}}' rtorrent-test) healthcheck"
+          else
+            echo "SCGI probe FAILED"
+            docker logs rtorrent-test
+            docker kill rtorrent-test >/dev/null 2>&1 || true
+            exit 1
+          fi
+          docker kill rtorrent-test >/dev/null 2>&1 || true
 
       - name: Summary
         if: always()

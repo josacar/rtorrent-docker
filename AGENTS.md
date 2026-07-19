@@ -24,7 +24,8 @@ The image is **arm64 only** and lives on GHCR. Everything in the repo is a packa
 |.
 ├── .env.example                    # Runtime env vars reference
 ├── .github/dependabot.yml          # Weekly dependency bump PRs
-├── .github/workflows/build.yml     # Native arm64 build + GHCR push
+├── .github/workflows/build.yml     # Native arm64 build + GHCR push + smoke test
+├── .github/workflows/check-upstream.yml  # Monthly check for new rakshasa releases
 ├── Dockerfile                      # Multi-stage: builder (tuned) → runtime (minimal)
 ├── docker-compose.yml              # rtorrent + Flood one-command deploy
 ├── docker-entrypoint.sh            # Seeds config and overlays runtime env overrides

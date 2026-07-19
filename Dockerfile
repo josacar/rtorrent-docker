@@ -112,8 +112,8 @@ RUN apt-get update \
 # Non-root user. UID/GID 1000 by default; override with --user or env at runtime.
 RUN groupadd --system --gid 1000 rtorrent \
     && useradd --system --uid 1000 --gid rtorrent --home-dir /data --shell /usr/sbin/nologin rtorrent \
-    && mkdir -p /data /config /watch /session /rpc \
-    && chown -R rtorrent:rtorrent /data /config /watch /session /rpc
+    && mkdir -p /data /config /watch /session \
+    && chown -R rtorrent:rtorrent /data /config /watch /session
 
 COPY --from=builder /usr/local/bin/rtorrent /usr/local/bin/rtorrent
 COPY --from=builder /usr/local/lib/libtorrent.so* /usr/local/lib/
@@ -137,7 +137,7 @@ WORKDIR /data
 # default rtorrent.rc, exposed on 0.0.0.0:5000. Remap as needed.
 EXPOSE 5000/tcp 6881/tcp 6881/udp
 
-VOLUME ["/data", "/config", "/watch", "/session", "/rpc"]
+VOLUME ["/data", "/config", "/watch", "/session"]
 
 # Tiny SCGI liveness probe: TCP connect succeeds iff rtorrent is listening.
 # We can't easily speak SCGI from the minimal runtime shell, so this is a
