@@ -12,7 +12,7 @@
 #   -mcpu=cortex-a55                  enable A55 scheduling + erratum workarounds
 #   -mtune=cortex-a55                 schedule for A55 even if -mcpu is relaxed later
 #   -O3 -flto=auto -ffat-lto-objects   whole-program LTO with fat objects for cache hits
-#   -fgraph-ite -fdevirtualize-at-ltrans   cheaper devirt + Graphite on hot loops
+#   -fgraphite -fdevirtualize-at-ltrans    Graphite on hot loops + cheaper devirt at LTRANS
 #   -fno-semantic-interposition        hide lib symbols so callers inline our code
 #   -fipa-pta                          interprocedural points-to (better aliasing)
 # Build runs as TARGETPLATFORM (arm64, emulated by QEMU on amd64 runners) so
@@ -26,7 +26,7 @@ ARG PARALLELISM=""
 
 # Rock 3A / RK3568 / Cortex-A55 / ARMv8.2-A optimization flags.
 # Used for both libtorrent (C) and rtorrent (C++) build.
-ENV OPT_FLAGS="-O3 -march=armv8.2-a+crypto+crc+simd -mcpu=cortex-a55 -mtune=cortex-a55 -flto=auto -ffat-lto-objects -fgraph-ite -fdevirtualize-at-ltrans -fno-semantic-interposition -fipa-pta -fno-plt"
+ENV OPT_FLAGS="-O3 -march=armv8.2-a+crypto+crc+simd -mcpu=cortex-a55 -mtune=cortex-a55 -flto=auto -ffat-lto-objects -fgraphite -fdevirtualize-at-ltrans -fno-semantic-interposition -fipa-pta -fno-plt"
 ENV LDFLAGS="-Wl,-O1 -Wl,--as-needed -Wl,-z,now -Wl,-z,relro -Wl,--hash-style=gnu"
 
 RUN apt-get update \
