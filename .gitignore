@@ -1,0 +1,12 @@
+# Build artifacts
+*.o
+*.lo
+*.la
+*.so
+*.a
+*.tar.gz
+/dist/
+/build/
+/src/
+*.log
+.DS_Store

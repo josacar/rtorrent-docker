@@ -1,0 +1,96 @@
+name: build-and-publish
+
+# Builds an arm64-only, Cortex-A55-tuned rtorrent 0.16.18 image and pushes
+# it to ghcr.io/<owner>/rtorrent-docker. QEMU emulation means the build runs
+# on a standard ubuntu-latest runner; expect ~25-35 minutes per build.
+
+on:
+  push:
+    branches: [main]
+    tags:     ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      rtorrent_version:
+        description: 'rakshasa rtorrent tag (without v prefix) to build'
+        required: false
+        default: '0.16.18'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+          buildkitd-flags: --debug
+
+      - name: Log in to GHCR
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version + tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # arm64-only manifest; explicitly tag arch in addition to latest.
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest-armv8.2-rock3a,enable={{is_default_branch}}
+            type=raw,value=arm64,enable={{is_default_branch}}
+
+      - name: Build & push (arm64 only)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+          build-args: |
+            RTORRENT_VERSION=${{ github.event.inputs.rtorrent_version || '0.16.18' }}
+            LIBTORRENT_VERSION=${{ github.event.inputs.rtorrent_version || '0.16.18' }}
+          cache-from: type=gha,scope=arm64
+          cache-to:   type=gha,mode=max,scope=arm64
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## rtorrent-docker build"
+            echo "Target: \`linux/arm64\` (Cortex-A55 / RK3568 / Rock 3A)"
+            echo "Image:  \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`"
+            echo "Digest: \`${{ steps.build.outputs.digest }}\`"
+            echo "Pushed: \`${{ github.event_name != 'pull_request' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

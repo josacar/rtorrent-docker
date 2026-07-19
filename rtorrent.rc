@@ -1,0 +1,45 @@
+# rtorrent 0.16.18 default config — tuned for Rock 3A + Flood (SCGI).
+#
+# XML-RPC and JSON-RPC are both enabled simultaneously over the same SCGI
+# endpoint so modern Flood (XMLRPCDeserializer) and Flood-4 (json) can both
+# talk to this container without a rebuild.
+
+# --- RPC ----------------------------------------------------------------
+network.rpc.use_xmlrpc.set = true
+network.rpc.use_jsonrpc.set = true
+
+# Expose SCGI on all interfaces so the Flood sidecar can reach us from
+# another container/pod. Tighten to 127.0.0.1 if Flood runs in-process.
+network.scgi.open_port = "0.0.0.0:5000"
+
+# --- Daemon mode (no ncurses UI) -----------------------------------------
+system.daemon.set = true
+
+# --- Storage -------------------------------------------------------------
+directory.default.set = /data
+session.path.set      = /session
+
+# --- Watch directory ----------------------------------------------------
+# Drop a .torrent file in /watch; rtorrent loads & starts it automatically.
+schedule2 = watch_directory,5,5,load.start=./watch/*.torrent
+method.set_key = watch_directory,5,"execute_nothrow=chmod,0666,(cat,/watch/, *.torrent)"
+
+# --- Peer / port range --------------------------------------------------
+network.port_range.set     = 6881-6881
+network.port_random.set    = no
+trackers.use_udp.set        = yes
+protocol.pex.set            = yes
+protocol.encryption.set     = allow_incoming,enable_retry,prefer_plaintext
+
+# --- DHT ----------------------------------------------------------------
+dht.mode.set  = auto
+dht.port.set  = 6881
+
+# --- Hashing / memory ---------------------------------------------------
+pieces.hash.on_completion.set = yes
+# A55 has 4 small cores; keep memory budget modest. Default 0 = auto.
+# system.memory.max.set = 512M
+
+# --- Logging ------------------------------------------------------------
+log.open_file = "rtorrent", /config/rtorrent.log
+log.add_output = "info", "rtorrent"
