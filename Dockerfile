@@ -82,7 +82,6 @@ RUN cd rtorrent \
         --prefix=/usr/local \
         --disable-debug \
         --disable-extra-debug \
-        --disable-execinfo \
         --without-lua \
         --with-xmlrpc-tinyxml2 \
         --without-ncurses \

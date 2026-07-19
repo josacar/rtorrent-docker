@@ -1,0 +1,39 @@
+services:
+  rtorrent:
+    image: ghcr.io/josacar/rtorrent-docker:latest-armv8.2-rock3a
+    restart: unless-stopped
+    volumes:
+      - rtorrent-data:/data
+      - rtorrent-session:/session
+      - rtorrent-config:/config
+      - rtorrent-watch:/watch
+    ports:
+      - "5000:5000"
+      - "6881:6881"
+      - "6881:6881/udp"
+
+  flood:
+    image: ghcr.io/jesec/flood:latest-native
+    restart: unless-stopped
+    environment:
+      # Point Flood at rtorrent's SCGI endpoint
+      FLOOD_OPTION_rthost: rtorrent
+      FLOOD_OPTION_rtport: "5000"
+      # Listen on all interfaces inside the pod network
+      FLOOD_OPTION_host: "::"
+      FLOOD_OPTION_port: "3000"
+      # Flood auth (set a real secret in production)
+      # FLOOD_OPTION_secret: change-me
+    volumes:
+      - flood-db:/data
+    ports:
+      - "3000:3000"
+    depends_on:
+      - rtorrent
+
+volumes:
+  rtorrent-data:
+  rtorrent-session:
+  rtorrent-config:
+  rtorrent-watch:
+  flood-db:

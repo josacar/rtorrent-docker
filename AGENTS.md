@@ -21,15 +21,18 @@ The image is **arm64 only** and lives on GHCR. Everything in the repo is a packa
 ## Repo layout
 
 ```
-.
-├── .github/workflows/build.yml   # QEMU arm64 build + GHCR push, SBOM + provenance
-├── Dockerfile                    # multi-stage: builder (tuned) → runtime (minimal)
-├── docker-entrypoint.sh          # seeds config and overlays runtime env overrides
-├── rtorrent.rc                   # default config shipped as /config/rtorrent.rc.default
-├── Makefile                      # build/run/inspect helpers wrapping podman
-├── LICENSE                       # MIT for this packaging layer (rtorrent is GPL-2.0+)
+|.
+├── .env.example                    # Runtime env vars reference
+├── .github/dependabot.yml          # Weekly dependency bump PRs
+├── .github/workflows/build.yml     # Native arm64 build + GHCR push
+├── Dockerfile                      # Multi-stage: builder (tuned) → runtime (minimal)
+├── docker-compose.yml              # rtorrent + Flood one-command deploy
+├── docker-entrypoint.sh            # Seeds config and overlays runtime env overrides
+├── rtorrent.rc                     # Default config shipped as /config/rtorrent.rc.default
+├── Makefile                        # Local dev helpers wrapping podman
+├── LICENSE                         # MIT for packaging layer (rtorrent is GPL-2.0+)
 ├── README.md
-└── AGENTS.md                     # this file
+└── AGENTS.md                       # This file
 ```
 
 Key conventions:
@@ -105,7 +108,7 @@ If you add a new `RT_*` override, also document it in the README's "Runtime over
 
 ## When changing CI
 
-`.github/workflows/build.yml` uses `docker/setup-qemu-action@v3` + `docker/setup-buildx-action@v3` + `docker/build-push-action@v6` + `docker/metadata-action@v5`. Caching is `type=gha,scope=arm64`. Keep:
+`.github/workflows/build.yml` uses `actions/checkout@v7` + `docker/setup-buildx-action@v4` + `docker/login-action@v4` + `docker/metadata-action@v6` + `docker/build-push-action@v7`. Caching is `type=gha,scope=arm64`. Keep:
 
 - `platforms: linux/arm64` (single-arch, by design).
 - `cache-from: type=gha,scope=arm64` and `cache-to: type=gha,mode=max,scope=arm64` (uses GitHub Actions cache, scope namespaced by arch so a future multi-arch build doesn't collide).
@@ -113,9 +116,11 @@ If you add a new `RT_*` override, also document it in the README's "Runtime over
 
 If changing tags/labels, edit the `tags:` multi-line block under `steps.meta`. The convention is `latest-armv8.2-rock3a` for the moving tip and `arm64` for an arch alias; semver tagging is handled by `type=semver,pattern=…`.
 
-## Things not to do
+`docker-compose.yml` ships rtorrent + Flood in a single compose file. If you add extra services (Caddy, health dashboard, etc.), keep them behind optional profiles so the default `docker compose up -d` still starts only rtorrent + Flood.
 
-- Don't add `docker compose` YAML files unless it's to extend the documented Flood pairing. The compose snippet in `README.md` is illustrative.
+`docker-compose.yml` uses `FLOOD_OPTION_rthost` / `FLOOD_OPTION_rtport` (Flood v4 CLI option names, mapped via yargs`.env('FLOOD_OPTION_')`). If Flood adds new client-connection options, mirror them in the compose file.
+
+## Things not to do
 - Don't pin to a musl-based image to "save space" without a benchmark that beats the glibc 2.41-Cortex-A55-tuned string routines in throughput. Surface size is not the priority for this image.
 - Don't change the license. The packaging layer is MIT; rakshasa binaries it ships are GPL-2.0-or-later. This split is documented in both `LICENSE` and `README.md`.
 - Don't add multi-arch manifests in passing — that's a deliberate single-arch image. If you need a fallback for non-Rock arm64 hosts, prefer a separate workflow or stage over loosening the build flags.
@@ -173,3 +178,5 @@ rtorrent -n -o 'print=(system.list_methods)'
 - [ ] No em dashes in code/config.
 - [ ] No multi-arch manifest changes sneaked in.
 - [ ] No new runtime deps unless the size is worth the feature.
+- [ ] If you added a new config or service file (`docker-compose.yml`, `.env.example`) you updated this checklist and the repo layout diagram.
+- [ ] `--disable-execinfo` is NOT in the Dockerfile — we removed it to keep crash backtraces on glibc.

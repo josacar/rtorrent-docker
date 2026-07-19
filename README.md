@@ -38,21 +38,25 @@ services:
       - "6881:6881/udp"
 
   flood:
-    image: jesec/flood:latest
+    image: ghcr.io/jesec/flood:latest-native
     restart: unless-stopped
     environment:
-      FLOOD_OPTION_rtorrent_host: rtorrent
-      FLOOD_OPTION_rtorrent_port: "5000"
-      FLOOD_OPTION_rtorrent_socket: "false"
+      FLOOD_OPTION_rthost: rtorrent
+      FLOOD_OPTION_rtport: "5000"
+      FLOOD_OPTION_host: "::"
+      FLOOD_OPTION_port: "3000"
     volumes:
-      - rtorrent-data:/data
-      - flood-db:/flood-db
+      - flood-db:/data
     ports:
       - "3000:3000"
     depends_on: [rtorrent]
 ```
 
-Point Flood's SCGI endpoint at `rtorrent:5000`. Both XML-RPC and JSON-RPC are live simultaneously — pick whichever your Flood release prefers.
+Or use the [`docker-compose.yml`](docker-compose.yml) in the repo root for a one-command deploy:
+
+```sh
+docker compose up -d
+```
 
 ---
 
