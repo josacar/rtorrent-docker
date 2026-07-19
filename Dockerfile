@@ -37,6 +37,14 @@ RUN apt-get update \
 
 WORKDIR /src
 
+# Sanity-check the compiler accepts $OPT_FLAGS + $LDFLAGS before passing them
+# to ./configure. If this fails, buildx prints gcc's real diagnostic instead of
+# autoconf's useless "C compiler cannot create executables".
+RUN printf 'int main(void){return 0;}\n' > /tmp/conftest.c \
+    && gcc $OPT_FLAGS $LDFLAGS -o /tmp/conftest /tmp/conftest.c \
+    && /tmp/conftest \
+    && rm -f /tmp/conftest /tmp/conftest.c
+
 # ----- Build libtorrent (rakshasa) -----------------------------------------
 RUN curl -fsSL -o libtorrent.tar.gz \
         "https://github.com/rakshasa/rtorrent/releases/download/v${RTORRENT_VERSION}/libtorrent-${LIBTORRENT_VERSION}.tar.gz" \

@@ -1,8 +1,9 @@
 name: build-and-publish
 
 # Builds an arm64-only, Cortex-A55-tuned rtorrent 0.16.18 image and pushes
-# it to ghcr.io/josacar/rtorrent-docker. QEMU emulation means the build runs
-# on a standard ubuntu-latest runner; expect ~25-35 minutes per build.
+# it to ghcr.io/josacar/rtorrent-docker. Uses GitHub's free native arm64
+# runners (ubuntu-24.04-arm), so the build runs on real arm64 hardware -
+# no QEMU emulation, ~5-10 min builds instead of ~30 min.
 
 on:
   push:
@@ -27,25 +28,18 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Native arm64 runner. cortex-a55 gcc flags are valid directly.
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+        uses: actions/checkout@v7
 
       - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          version: latest
-          buildkitd-flags: --debug
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
         if: ${{ github.event_name != 'pull_request' }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -53,7 +47,7 @@ jobs:
 
       - name: Resolve version + tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # arm64-only manifest; explicitly tag arch in addition to latest.
@@ -68,7 +62,7 @@ jobs:
 
       - name: Build & push (arm64 only)
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -90,6 +84,7 @@ jobs:
           {
             echo "## rtorrent-docker build"
             echo "Target: \`linux/arm64\` (Cortex-A55 / RK3568 / Rock 3A)"
+            echo "Runner: \`ubuntu-24.04-arm\` (native arm64, no QEMU)"
             echo "Image:  \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`"
             echo "Digest: \`${{ steps.build.outputs.digest }}\`"
             echo "Pushed: \`${{ github.event_name != 'pull_request' }}\`"
