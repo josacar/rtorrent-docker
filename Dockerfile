@@ -1,24 +1,32 @@
 # syntax=docker/dockerfile:1.6
 
 # =============================================================================
-# Builder stage. Produces an armv8.2 / Cortex-A55-tuned rtorrent 0.16.18 binary
-# on debian:trixie-slim with gcc 14 and glibc 2.41.
+# Builder stage — produces a tuned rtorrent 0.16.18 binary for either
+# arm64 (Cortex-A55 / Rock 3A) or amd64 (x86-64-v3).
 #
-# Tune flags are valid on a real aarch64 build host. They also work when QEMU
-# is emulating arm64 from an amd64 runner because the ISA seen by gcc is still
-# arm64 so -mcpu=cortex-a55 is accepted. The runner is natively arm64 (GH
-# Actions ubuntu-24.04-arm) so these flags compile directly on real hardware.
+# The TARGETPLATFORM build-arg (supplied automatically by buildx) selects
+# arch-specific gcc flags. On ubuntu-24.04-arm the arm64 flags compile
+# natively; on ubuntu-latest the amd64 flags compile natively. QEMU is not
+# needed because the Dockerfile's own CI runs each arch on native hardware.
 #
-# Tune recipe (Cortex-A55 / RK3568):
-#   -march=armv8.2-a+crypto+crc+simd  enable AES/SHA2/PMULL/CRC32/NEON ISA
-#   -mcpu=cortex-a55                  enable A55 scheduling + erratum workarounds
-#   -mtune=cortex-a55                 schedule for A55 even if -mcpu is relaxed later
-#   -O3 -flto=auto -ffat-lto-objects   whole-program LTO with fat objects for cache hits
-#   -fgraphite -fdevirtualize-at-ltrans    Graphite on hot loops + cheaper devirt at LTRANS
-#   -fno-semantic-interposition        hide lib symbols so callers inline our code
-#   -fipa-pta                          interprocedural points-to (better aliasing)
-# No --platform=... override here. The builder inherits TARGETPLATFORM (arm64)
-# and on ubuntu-24.04-arm that means native arm64 gcc, no emulation.
+# Tune recipes:
+#
+#   arm64 (Cortex-A55 / RK3568):
+#     -march=armv8.2-a+crypto+crc+simd  enable AES/SHA2/PMULL/CRC32/NEON ISA
+#     -mcpu=cortex-a55                  enable A55 scheduling + erratum workarounds
+#     -mtune=cortex-a55                 schedule for A55 even if -mcpu is relaxed later
+#     -O3 -flto=auto -ffat-lto-objects
+#     -fgraphite -fdevirtualize-at-ltrans
+#     -fno-semantic-interposition
+#     -fipa-pta                         interprocedural points-to (LTO)
+#     -fno-plt
+#
+#   amd64 (x86-64-v3 baseline):
+#     -march=x86-64-v3                  Haswell+ baseline (AVX2, BMI, FMA, MOVBE)
+#     -O3 -flto=auto -ffat-lto-objects
+#     -fgraphite -fdevirtualize-at-ltrans
+#     -fno-semantic-interposition
+#     -fno-plt
 # =============================================================================
 FROM debian:trixie-slim AS builder
 
@@ -26,9 +34,13 @@ ARG RTORRENT_VERSION=0.16.18
 ARG LIBTORRENT_VERSION=0.16.18
 ARG PARALLELISM=""
 
-# Rock 3A / RK3568 / Cortex-A55 / ARMv8.2-A optimization flags.
-# Used for both libtorrent (C) and rtorrent (C++) build.
-ENV OPT_FLAGS="-O3 -march=armv8.2-a+crypto+crc+simd -mcpu=cortex-a55 -mtune=cortex-a55 -flto=auto -ffat-lto-objects -fgraphite -fdevirtualize-at-ltrans -fno-semantic-interposition -fipa-pta -fno-plt"
+# TARGETPLATFORM is set automatically by buildx (e.g. linux/arm64, linux/amd64).
+# We use it to select arch-specific optimization flags.
+ARG TARGETPLATFORM
+
+# Write arch-specific flags once; each subsequent RUN sources this file.
+RUN printf 'case "$TARGETPLATFORM" in\n  linux/arm64)\n    OPT_FLAGS="-O3 -march=armv8.2-a+crypto+crc+simd -mcpu=cortex-a55 -mtune=cortex-a55 -flto=auto -ffat-lto-objects -fgraphite -fdevirtualize-at-ltrans -fno-semantic-interposition -fipa-pta -fno-plt"\n    ;;\n  linux/amd64)\n    OPT_FLAGS="-O3 -march=x86-64-v3 -flto=auto -ffat-lto-objects -fgraphite -fdevirtualize-at-ltrans -fno-semantic-interposition -fno-plt"\n    ;;\n  *)\n    echo "Unsupported target: $TARGETPLATFORM" >&2; exit 1 ;;\nesac\n' > /tmp/arch_flags.sh
+
 ENV LDFLAGS="-Wl,-O1 -Wl,--as-needed -Wl,-z,now -Wl,-z,relro -Wl,--hash-style=gnu"
 
 RUN apt-get update \
@@ -40,13 +52,13 @@ RUN apt-get update \
 
 WORKDIR /src
 
-# Sanity-check the compiler accepts $OPT_FLAGS + $LDFLAGS before passing them
-# to ./configure. If this fails, buildx prints gcc's real diagnostic instead of
-# autoconf's useless "C compiler cannot create executables".
-RUN printf 'int main(void){return 0;}\n' > /tmp/conftest.c \
+# Pre-configure sanity check: compile a trivial program with the chosen flags.
+# If a flag is bogus, gcc prints the real diagnostic (not autoconf's terse
+# "C compiler cannot create executables").
+RUN . /tmp/arch_flags.sh \
+    && printf 'int main(void){return 0;}\n' > /tmp/conftest.c \
     && gcc $OPT_FLAGS $LDFLAGS -o /tmp/conftest /tmp/conftest.c \
-    && /tmp/conftest \
-    && rm -f /tmp/conftest /tmp/conftest.c
+    && /tmp/conftest
 
 # ----- Build libtorrent (rakshasa) -----------------------------------------
 RUN curl -fsSL -o libtorrent.tar.gz \
@@ -55,10 +67,11 @@ RUN curl -fsSL -o libtorrent.tar.gz \
     && tar -xf libtorrent.tar.gz -C libtorrent --strip-components=1 \
     && rm libtorrent.tar.gz
 
-RUN cd libtorrent \
+RUN . /tmp/arch_flags.sh \
     && export CFLAGS="$OPT_FLAGS" \
     && export CXXFLAGS="$OPT_FLAGS" \
     && export LDFLAGS="$LDFLAGS" \
+    && cd libtorrent \
     && ./configure \
         --prefix=/usr/local \
         --disable-debug \
@@ -74,10 +87,11 @@ RUN curl -fsSL -o rtorrent.tar.gz \
     && tar -xf rtorrent.tar.gz -C rtorrent --strip-components=1 \
     && rm rtorrent.tar.gz
 
-RUN cd rtorrent \
+RUN . /tmp/arch_flags.sh \
     && export CFLAGS="$OPT_FLAGS" \
     && export CXXFLAGS="$OPT_FLAGS" \
     && export LDFLAGS="$LDFLAGS" \
+    && cd rtorrent \
     && ./configure \
         --prefix=/usr/local \
         --disable-debug \
@@ -88,19 +102,18 @@ RUN cd rtorrent \
     && make -j"$(nproc)${PARALLELISM:+=$PARALLELISM}" \
     && make install-strip
 
-# Confirm the binary is built (loaded by arm64 libc via QEMU or native) and
-# report its ELF attributes for visibility in CI logs.
+# Confirm rtorrent runs.
 RUN /usr/local/bin/rtorrent -h 2>&1 | head -1 || true
 
 # =============================================================================
-# Runtime stage. Debian trixie-slim (glibc 2.41, arm64 with cortex-a55
-# tuned memcpy/memmove/atomics in glibc 2.41+). Minimal footprint (~29 MB).
+# Runtime stage. Minimal trixie-slim (~29 MB arm64, ~26 MB amd64) with just
+# enough runtime deps for the rtorrent binary.
 # =============================================================================
 FROM debian:trixie-slim AS runtime
 
 ARG RTORRENT_VERSION=0.16.18
-LABEL org.opencontainers.image.title="rtorrent (armv8.2 / Cortex-A55 tuned)" \
-      org.opencontainers.image.description="rakshasa rtorrent ${RTORRENT_VERSION}, optimized for Rock 3A (RK3568) with JSON-RPC + XML-RPC over SCGI for Flood." \
+LABEL org.opencontainers.image.title="rtorrent (optimized)" \
+      org.opencontainers.image.description="rakshasa rtorrent ${RTORRENT_VERSION}, tuned per-arch with JSON-RPC + XML-RPC over SCGI for Flood." \
       org.opencontainers.image.source="https://github.com/rakshasa/rtorrent" \
       org.opencontainers.image.licenses="GPL-2.0-or-later"
 
@@ -126,23 +139,20 @@ RUN ldconfig \
     && chmod 0644 /config/rtorrent.rc.default
 
 # Copy the default config into /config so rtorrent starts even with an empty
-# config volume. This is a one-shot seed; the entrypoint won't overwrite a
-# non-empty /config/rtorrent.rc at runtime.
+# config volume. The entrypoint won't overwrite a user-mounted file.
 RUN cp /config/rtorrent.rc.default /config/rtorrent.rc 2>/dev/null || true
 
 USER rtorrent
 WORKDIR /data
 
 # Flood talks SCGI to rtorrent. XML-RPC + JSON-RPC are both enabled in the
-# default rtorrent.rc, exposed on 0.0.0.0:5000. Remap as needed.
+# default rtorrent.rc, exposed on 0.0.0.0:5000.  The BitTorrent port range
+# is configurable via env or a mounted rc file.
 EXPOSE 5000/tcp 6881/tcp 6881/udp
 
 VOLUME ["/data", "/config", "/watch", "/session"]
 
-# Tiny SCGI liveness probe: TCP connect succeeds iff rtorrent is listening.
-# We can't easily speak SCGI from the minimal runtime shell, so this is a
-# listener check (orchestrators get accurate 'process up + socket bound'
-# signal, which is what most rtorrent deployments use).
+# TCP-connect liveness probe: confirms rtorrent bound the SCGI port.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD nc -z 127.0.0.1 5000 || exit 1
 

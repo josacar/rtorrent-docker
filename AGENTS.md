@@ -15,8 +15,8 @@ The image is **arm64 only** and lives on GHCR. Everything in the repo is a packa
 - **Target ISA/microarch:** ARMv8.2-A, Cortex-A55. The Dockerfile's `OPT_FLAGS` is the canonical place to tune. If you change it, justify the change in the comment block above the `ENV OPT_FLAGS=...` line.
 - **Builder and runtime base:** `debian:trixie-slim` (gcc 14, glibc 2.41). Do not switch to Alpine/musl without re-evaluating `libtorrent`'s glibc-specific configure probes (`execinfo`, `posix_spawn` `close_range`, etc.) — see the comparison table in `README.md`.
 - **Upstream versions** are pinned to `0.16.18` for both libtorrent and rtorrent; match them (they release in lockstep). Override at build time via build-args if you need to test an older release.
-- **C++20 is mandatory** for rtorrent 0.16.x. The stock Debian `g++-12` satisfies it.
-- **The published manifest is `linux/arm64` only.** There is no amd64 image; that is intentional. If you want a multi-arch manifest you'll need to rewrite `.github/workflows/build.yml`.
+- **C++20 is mandatory** for rtorrent 0.16.x. Debian trixie ships gcc 14 which satisfies it.
+- **The published manifest is multi-arch (`linux/arm64` + `linux/amd64`).** The arm64 variant carries Cortex-A55 tuning; the amd64 variant carries x86-64-v3 tuning. Each is built on its native runner (ubuntu-24.04-arm / ubuntu-latest). If you change build flags, update both arms of the `TARGETPLATFORM` case statement in the builder.
 
 ## Repo layout
 
@@ -109,13 +109,20 @@ If you add a new `RT_*` override, also document it in the README's "Runtime over
 
 ## When changing CI
 
-`.github/workflows/build.yml` uses `actions/checkout@v7` + `docker/setup-buildx-action@v4` + `docker/login-action@v4` + `docker/metadata-action@v6` + `docker/build-push-action@v7`. Caching is `type=gha,scope=arm64`. Keep:
+`.github/workflows/build.yml` runs **three** parallel jobs:
 
-- `platforms: linux/arm64` (single-arch, by design).
-- `cache-from: type=gha,scope=arm64` and `cache-to: type=gha,mode=max,scope=arm64` (uses GitHub Actions cache, scope namespaced by arch so a future multi-arch build doesn't collide).
-- `provenance: true` and `sbom: true` — these are deliberate; do not remove them.
+| Job | Runner | Platforms | Smoke test | Output |
+| --- | --- | --- | --- | --- |
+| `build-arm64` | `ubuntu-24.04-arm` | `linux/arm64` | SCGI port 5000 | `:arm64` arch tag |
+| `build-amd64` | `ubuntu-latest` | `linux/amd64` | SCGI port 5000 | `:amd64` arch tag |
+| `manifest` | `ubuntu-latest` | — | — | combined `:latest`, semver, `:latest-armv8.2-rock3a` |
 
-If changing tags/labels, edit the `tags:` multi-line block under `steps.meta`. The convention is `latest-armv8.2-rock3a` for the moving tip and `arm64` for an arch alias; semver tagging is handled by `type=semver,pattern=…`.
+All three use `docker/build-push-action@v7`. Important rules:
+
+- `cache-from` and `cache-to` are scoped per-arch (`scope=arm64`, `scope=amd64`) to avoid cache key collisions in GHA.
+- Each arch's build pushes only its single-arch tag (`:arm64` / `:amd64`).
+- The `manifest` job runs `docker buildx imagetools create` to stitch the two arch tags together into multi-arch manifests for `:latest`, `:latest-armv8.2-rock3a`, and semver tags.
+- Tagged semver releases only produce manifests — the arch tags `:arm64` and `:amd64` are always overwritten on `main` push.
 
 `docker-compose.yml` ships rtorrent + Flood in a single compose file. If you add extra services (Caddy, health dashboard, etc.), keep them behind optional profiles so the default `docker compose up -d` still starts only rtorrent + Flood.
 
@@ -123,11 +130,11 @@ If changing tags/labels, edit the `tags:` multi-line block under `steps.meta`. T
 
 ## Things not to do
 - Don't pin to a musl-based image to "save space" without a benchmark that beats the glibc 2.41-Cortex-A55-tuned string routines in throughput. Surface size is not the priority for this image.
-- Don't change the license. The packaging layer is MIT; rakshasa binaries it ships are GPL-2.0-or-later. This split is documented in both `LICENSE` and `README.md`.
-- Don't add multi-arch manifests in passing — that's a deliberate single-arch image. If you need a fallback for non-Rock arm64 hosts, prefer a separate workflow or stage over loosening the build flags.
-- Don't add a `--platform=$BUILDPLATFORM` to the `builder` stage. The Cortex-A55 flags are only valid on arm64 gcc; making the builder match the host would fail on amd64.
-- Don't introduce `bash`/`curl`/`jq` runtime deps so you can do a fancier healthcheck — the current `nc -z` probe is a deliberate size/perf tradeoff. A real SCGI pulse is the responsibility of the downstream UI (Flood), not the container's own healthcheck.
+- Don't change the license.
+- Don't introduce `bash`/`curl`/`jq` runtime deps so you can do a fancier healthcheck — the current `nc -z` probe is a deliberate size/perf tradeoff.
 - Don't commit binary artifacts or downloaded tarballs. `Dockerfile` curls them at build time and `.gitignore` blocks the obvious detritus.
+- Don't remove `provenance: true` and `sbom: true` — they are deliberate.
+- Don't change `cache-from`/`cache-to` scoping without verifying the per-arch keys (`scope=arm64`, `scope=amd64`).
 
 ## rtorrent 0.16.x command-name gotchas
 
@@ -174,10 +181,9 @@ rtorrent -n -o 'print=(system.list_methods)'
 - [ ] `dash -n docker-entrypoint.sh` passes.
 - [ ] `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/build.yml'))"` passes.
 - [ ] You bumped `RTORRENT_VERSION` *and* `LIBTORRENT_VERSION` in lockstep.
-- [ ] If you changed `OPT_FLAGS`, you explained every new flag in the comment block.
+- [ ] If you changed build flags, you updated BOTH arms of the `TARGETPLATFORM` case in `arch_flags.sh`.
 - [ ] If you added an `RT_*` env override, you documented it in the README table.
 - [ ] No em dashes in code/config.
-- [ ] No multi-arch manifest changes sneaked in.
 - [ ] No new runtime deps unless the size is worth the feature.
-- [ ] If you added a new config or service file (`docker-compose.yml`, `.env.example`) you updated this checklist and the repo layout diagram.
-- [ ] `--disable-execinfo` is NOT in the Dockerfile — we removed it to keep crash backtraces on glibc.
+- [ ] If you added a new config or service file you updated the repo layout diagram in AGENTS.md.
+- [ ] `--disable-execinfo` is NOT in the Dockerfile.

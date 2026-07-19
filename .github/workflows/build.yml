@@ -1,9 +1,10 @@
 name: build-and-publish
 
-# Builds an arm64-only, Cortex-A55-tuned rtorrent 0.16.18 image and pushes
-# it to ghcr.io/josacar/rtorrent-docker. Uses GitHub's free native arm64
-# runners (ubuntu-24.04-arm), so the build runs on real arm64 hardware -
-# no QEMU emulation, ~5-10 min builds instead of ~30 min.
+# Builds a multi-arch image (linux/arm64 + linux/amd64) using two native
+# runners in parallel. The arm64 job runs on ubuntu-24.04-arm (free native
+# arm64 hardware), the amd64 job on ubuntu-latest. Each pushes its own
+# arch-specific tag, then a manifest job stitches them into combined tags
+# (latest, semver). No QEMU involved.
 
 on:
   push:
@@ -25,107 +26,131 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  RTORRENT_VERSION: ${{ github.event.inputs.rtorrent_version || '0.16.18' }}
 
 jobs:
-  build:
+  build-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Log in to GHCR
-        if: ${{ github.event_name != 'pull_request' }}
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - if: ${{ github.event_name != 'pull_request' }}
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve version + tags
-        id: meta
-        uses: docker/metadata-action@v6
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # arm64-only manifest; explicitly tag arch in addition to latest.
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest-armv8.2-rock3a,enable={{is_default_branch}}
-            type=raw,value=arm64,enable={{is_default_branch}}
-
-      - name: Build & push (arm64 only)
-        id: build
+      - name: Build & push (arm64)
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
           platforms: linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64
           provenance: true
           sbom: true
-          build-args: |
-            RTORRENT_VERSION=${{ github.event.inputs.rtorrent_version || '0.16.18' }}
-            LIBTORRENT_VERSION=${{ github.event.inputs.rtorrent_version || '0.16.18' }}
+          build-args: RTORRENT_VERSION=${{ env.RTORRENT_VERSION }}
           cache-from: type=gha,scope=arm64
           cache-to:   type=gha,mode=max,scope=arm64
 
-      - name: Summary
-        if: always()
+      - name: Smoke test (arm64)
+        if: ${{ github.event_name != 'pull_request' }}
         run: |
-          {
-            echo "## rtorrent-docker build"
-            echo "Target: \`linux/arm64\` (Cortex-A55 / RK3568 / Rock 3A)"
-            echo "Runner: \`ubuntu-24.04-arm\` (native arm64, no QEMU)"
-            echo "Image:  \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`"
-            echo "Digest: \`${{ steps.build.outputs.digest }}\`"
-            echo "Pushed: \`${{ github.event_name != 'pull_request' }}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          docker run -d --name rtorrent-test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64
+          for i in $(seq 20); do sleep 1
+            docker exec rtorrent-test nc -z 127.0.0.1 5000 2>/dev/null && break
+          done
+          docker exec rtorrent-test nc -z 127.0.0.1 5000 2>/dev/null \
+            && echo "arm64 SCGI PASSED" \
+            || { echo "arm64 SCGI FAILED"; docker logs rtorrent-test; exit 1; }
+          docker kill rtorrent-test >/dev/null 2>&1 || true
 
-  # Smoke test only runs on pushed images (main branch + tags).
-  # It pulls the image that was just pushed and verifies rtorrent boots
-  # and binds SCGI port 5000 within 20 seconds.
-  smoke-test:
-    if: ${{ github.event_name != 'pull_request' }}
-    needs: [build]
-    runs-on: ubuntu-24.04-arm
+  build-amd64:
+    runs-on: ubuntu-latest
     steps:
-      - name: Log in to GHCR
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - if: ${{ github.event_name != 'pull_request' }}
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull image
-        env:
-          TEST_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-armv8.2-rock3a
-        run: |
-          echo "Pulling $TEST_IMAGE"
-          docker pull "$TEST_IMAGE"
+      - name: Build & push (amd64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64
+          provenance: true
+          sbom: true
+          build-args: RTORRENT_VERSION=${{ env.RTORRENT_VERSION }}
+          cache-from: type=gha,scope=amd64
+          cache-to:   type=gha,mode=max,scope=amd64
 
-      - name: Run and verify SCGI
+      - name: Smoke test (amd64)
+        if: ${{ github.event_name != 'pull_request' }}
         run: |
-          docker run -d --name rtorrent-test \
-            ghcr.io/josacar/rtorrent-docker:latest-armv8.2-rock3a
-          # Wait up to 20s for SCGI port 5000 inside the container
-          for i in $(seq 20); do
-            sleep 1
+          docker run -d --name rtorrent-test ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64
+          for i in $(seq 20); do sleep 1
             docker exec rtorrent-test nc -z 127.0.0.1 5000 2>/dev/null && break
           done
-          if docker exec rtorrent-test nc -z 127.0.0.1 5000 2>/dev/null; then
-            echo "SCGI probe PASSED"
-          else
-            echo "SCGI probe FAILED after 20s — rtorrent may have crashed"
-            docker logs rtorrent-test || true
-            docker kill rtorrent-test >/dev/null 2>&1 || true
-            exit 1
-          fi
+          docker exec rtorrent-test nc -z 127.0.0.1 5000 2>/dev/null \
+            && echo "amd64 SCGI PASSED" \
+            || { echo "amd64 SCGI FAILED"; docker logs rtorrent-test; exit 1; }
           docker kill rtorrent-test >/dev/null 2>&1 || true
+
+  manifest:
+    if: ${{ github.event_name != 'pull_request' }}
+    needs: [build-arm64, build-amd64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve combined tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest-armv8.2-rock3a,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+
+      - name: Create multi-arch manifest
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          ARM64_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64
+          AMD64_TAG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64
+        run: |
+          echo "$TAGS" | while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            echo "Creating manifest: $tag"
+            docker buildx imagetools create -t "$tag" "$ARM64_TAG" "$AMD64_TAG"
+          done
+
+      - name: Summary
+        run: |
+          {
+            echo "## rtorrent-docker multi-arch manifest"
+            echo "arm64: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:arm64\`"
+            echo "amd64: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:amd64\`"
+            echo ""
+            echo "### Combined tags"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" \
+            | while IFS= read -r tag; do
+                [ -z "$tag" ] && continue
+                echo "- \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+              done

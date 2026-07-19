@@ -2,7 +2,7 @@
 
 > Minimal, performance-tuned Docker image of [rakshasa/rtorrent](https://github.com/rakshasa/rtorrent) **0.16.18** for the [Radxa Rock 3A](https://wiki.radxa.com/Rock3/3a) (RK3568, quad-core Cortex-A55 @ 2.0 GHz, ARMv8.2-A). Ships with **XML-RPC and JSON-RPC** over SCGI so [Flood](https://github.com/jesec/flood) works out of the box — no `xmlrpc-c` dependency, since rtorrent 0.16.x bundles `tinyxml2` and `nlohmann/json`.
 
-Published as **arm64 only** to GHCR. Running it on a non-Cortex-A55 arm64 board still works (the ISA baseline is ARMv8.2-A) but loses the microarchitectural scheduling benefit.
+Published as **multi-arch** (`linux/arm64` + `linux/amd64`) to GHCR. The arm64 variant is tuned for Cortex-A55 (Rock 3A); the amd64 variant uses x86-64-v3. A combined manifest means `docker pull ghcr.io/josacar/rtorrent-docker:latest` picks the right architecture automatically.
 
 ---
 
