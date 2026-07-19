@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.6
 
 # =============================================================================
-# Builder stage — produces an armv8.2 / Cortex-A55-tuned rtorrent 0.16.18 binary.
+# Builder stage. Produces an armv8.2 / Cortex-A55-tuned rtorrent 0.16.18 binary.
 #
 # Tune flags are only valid on a real aarch64 build host; they are a no-op
 # when QEMU is emulating arm64 from an amd64 GitHub runner because the
@@ -92,7 +92,7 @@ RUN cd rtorrent \
 RUN /usr/local/bin/rtorrent -h 2>&1 | head -1 || true
 
 # =============================================================================
-# Runtime stage — Debian bookworm-slim (glibc 2.36, arm64 with cortex-a55
+# Runtime stage. Debian bookworm-slim (glibc 2.36, arm64 with cortex-a55
 # tuned memcpy/memmove/atomics in glibc 2.36+). Minimal footprint (~25 MB).
 # =============================================================================
 FROM debian:bookworm-slim AS runtime

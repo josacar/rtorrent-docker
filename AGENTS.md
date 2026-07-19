@@ -123,6 +123,26 @@ If changing tags/labels, edit the `tags:` multi-line block under `steps.meta`. T
 - Don't introduce `bash`/`curl`/`jq` runtime deps so you can do a fancier healthcheck — the current `nc -z` probe is a deliberate size/perf tradeoff. A real SCGI pulse is the responsibility of the downstream UI (Flood), not the container's own healthcheck.
 - Don't commit binary artifacts or downloaded tarballs. `Dockerfile` curls them at build time and `.gitignore` blocks the obvious detritus.
 
+## rtorrent 0.16.x command-name gotchas
+
+The doc files shipped in `rakshasa/rtorrent` v0.16.x (`doc/rtorrent.rc` and `doc/rtorrent.rc-example`) are **partly stale**. The binary was refactored when 0.9.x was merged into the 0.16.x trunk, and the example rc files were not fully updated.
+
+If your container starts and immediately exits with `Command "<name>" does not exist`, grep the source, don't trust the doc files:
+
+| Doc says | Binary accepts in 0.16.18 | Registered at |
+| --- | --- | --- |
+| `schedule2 = name, i, j, command` | `schedule = name, i, j, command` | `src/command_events.cc:343` (`CMD2_ANY_LIST("schedule", ...)`) |
+| `load.start=./path/*.torrent` (with `=`) | `((load.start, (cat, ./path/, "*.torrent")))` (comma form, single arg) or `load.start, "./path/file.torrent"` | `src/command_events.cc:351` |
+| `method.set_key = <event>, <key>, <command>` | Only valid for **real** event names like `download.start`, `system.network.*`. Don't invent events like `watch_directory`. | `src/main.cc` |
+
+To enumerate the binary's actual commands at runtime:
+
+```
+rtorrent -n -o 'print=(system.list_methods)'
+```
+
+…or via SCGI from Flood. Treat `doc/rtorrent.rc*` as a rough guide, not a syntax reference. The reliable reference is the cmd-ref docs at <https://rtorrent-docs.readthedocs.io/en/latest/cmd-ref.html>.
+
 ## Useful upstream references
 
 - rtorrent source tree: https://github.com/rakshasa/rtorrent/tree/v0.16.18

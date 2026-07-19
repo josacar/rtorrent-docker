@@ -1,4 +1,4 @@
-# rtorrent 0.16.18 default config — tuned for Rock 3A + Flood (SCGI).
+# rtorrent 0.16.18 default config, tuned for Rock 3A + Flood (SCGI).
 #
 # XML-RPC and JSON-RPC are both enabled simultaneously over the same SCGI
 # endpoint so modern Flood (XMLRPCDeserializer) and Flood-4 (json) can both
@@ -20,9 +20,10 @@ directory.default.set = /data
 session.path.set      = /session
 
 # --- Watch directory ----------------------------------------------------
-# Drop a .torrent file in /watch; rtorrent loads & starts it automatically.
-schedule2 = watch_directory,5,5,load.start=./watch/*.torrent
-method.set_key = watch_directory,5,"execute_nothrow=chmod,0666,(cat,/watch/, *.torrent)"
+# Drop a .torrent file in /watch; rtorrent loads & starts it auto-magically.
+# In rtorrent 0.16.x the command is "schedule" (the old "schedule2" name from
+# 0.9.x was merged back). Match the syntax of the upstream rc-example.
+schedule = watch_directory,10,10,((load.start, (cat, ./watch/, "*.torrent")))
 
 # --- Peer / port range --------------------------------------------------
 network.port_range.set     = 6881-6881
