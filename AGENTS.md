@@ -132,6 +132,11 @@ If your container starts and immediately exits with `Command "<name>" does not e
 | Doc says | Binary accepts in 0.16.18 | Registered at |
 | --- | --- | --- |
 | `schedule2 = name, i, j, command` | `schedule = name, i, j, command` | `src/command_events.cc:343` (`CMD2_ANY_LIST("schedule", ...)`) |
+| `network.port_range.set = ...` | `network.listen.port.range.set = "..."` | `src/command_network.cc:324` |
+| `network.port_random.set = ...` | `network.listen.port.random.set = ...` | `src/command_network.cc:322` |
+| `dht.port.set = ...` | `dht.override_port.set = ...` (old logs a deprecation warning) | `src/command_tracker.cc:145` |
+| `trackers.use_udp.set = ...` | **Removed** — logs "no longer supported" and does nothing. UDP trackers are always enabled in 0.16.x. | `src/command_tracker.cc:135-137` |
+| `pieces.hash.on_completion.set = ...` | **Removed** — not found in v0.16.18 source. | N/A |
 | `load.start=./path/*.torrent` (with `=`) | `((load.start, (cat, ./path/, "*.torrent")))` (comma form, single arg) or `load.start, "./path/file.torrent"` | `src/command_events.cc:351` |
 | `method.set_key = <event>, <key>, <command>` | Only valid for **real** event names like `download.start`, `system.network.*`. Don't invent events like `watch_directory`. | `src/main.cc` |
 

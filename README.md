@@ -140,7 +140,7 @@ The entrypoint reads these env vars and writes them to an import-only `rtorrent.
 | `RT_RPC_JSON` | `network.rpc.use_jsonrpc.set` |
 | `RT_DOWNLOAD_DIR` | `directory.default.set` |
 | `RT_SESSION_DIR` | `session.path.set` |
-| `RT_PORT_RANGE` | `network.port_range.set` |
+| `RT_PORT_RANGE` | `network.listen.port.range.set` |
 | `RT_UP_MAX_KB` | `throttle.global_up.max_rate.set_kb` |
 | `RT_DOWN_MAX_KB` | `throttle.global_down.max_rate.set_kb` |
 

@@ -44,7 +44,7 @@ if [ -n "${RT_SESSION_DIR:-}" ]; then
     add_override "session.path.set = \"${RT_SESSION_DIR}\""
 fi
 if [ -n "${RT_PORT_RANGE:-}" ]; then
-    add_override "network.port_range.set = ${RT_PORT_RANGE}"
+    add_override "network.listen.port.range.set = \"${RT_PORT_RANGE}\""
 fi
 if [ -n "${RT_UP_MAX_KB:-}" ]; then
     add_override "throttle.global_up.max_rate.set_kb = ${RT_UP_MAX_KB}"

@@ -3,13 +3,18 @@
 # XML-RPC and JSON-RPC are both enabled simultaneously over the same SCGI
 # endpoint so modern Flood (XMLRPCDeserializer) and Flood-4 (json) can both
 # talk to this container without a rebuild.
+#
+# WARNING: the doc files shipped in the rakshasa release tarball
+# (doc/rtorrent.rc and doc/rtorrent.rc-example) are PARTLY STALE.
+# This file uses only commands verified from the v0.16.18 source.
+# See AGENTS.md for a list of renamed/removed commands.
 
 # --- RPC ----------------------------------------------------------------
 network.rpc.use_xmlrpc.set = true
 network.rpc.use_jsonrpc.set = true
 
 # Expose SCGI on all interfaces so the Flood sidecar can reach us from
-# another container/pod. Tighten to 127.0.0.1 if Flood runs in-process.
+# another container/pod.  Tighten to 127.0.0.1 if Flood runs in-process.
 network.scgi.open_port = "0.0.0.0:5000"
 
 # --- Daemon mode (no ncurses UI) -----------------------------------------
@@ -20,27 +25,33 @@ directory.default.set = /data
 session.path.set      = /session
 
 # --- Watch directory ----------------------------------------------------
-# Drop a .torrent file in /watch; rtorrent loads & starts it auto-magically.
-# In rtorrent 0.16.x the command is "schedule" (the old "schedule2" name from
-# 0.9.x was merged back). Match the syntax of the upstream rc-example.
+# Drop a .torrent file in /watch; rtorrent loads & starts it automatically.
 schedule = watch_directory,10,10,((load.start, (cat, ./watch/, "*.torrent")))
 
 # --- Peer / port range --------------------------------------------------
-network.port_range.set     = 6881-6881
-network.port_random.set    = no
-trackers.use_udp.set        = yes
-protocol.pex.set            = yes
-protocol.encryption.set     = allow_incoming,enable_retry,prefer_plaintext
+network.listen.port.range.set = "6881-6881"
+network.listen.port.random.set = false
+protocol.pex.set              = yes
+protocol.encryption.set       = allow_incoming,enable_retry,prefer_plaintext
 
 # --- DHT ----------------------------------------------------------------
-dht.mode.set  = auto
-dht.port.set  = 6881
+dht.mode.set        = auto
+dht.override_port.set = 6881
+
+# In 0.16.x trackers.use_udp.set and dht.port.set log "no longer supported"
+# and are no-ops.  UDP trackers and DHT port are always on / auto-managed.
+
+# --- Throttle / peers ---------------------------------------------------
+throttle.min_peers.normal.set  = 40
+throttle.max_peers.normal.set  = 100
+throttle.min_peers.seed.set    = 10
+throttle.max_peers.seed.set    = 50
+throttle.max_uploads.set       = 15
 
 # --- Hashing / memory ---------------------------------------------------
-pieces.hash.on_completion.set = yes
-# A55 has 4 small cores; keep memory budget modest. Default 0 = auto.
+# A55 has 4 small cores; keep memory budget modest.  Default 0 = auto.
 # system.memory.max.set = 512M
 
 # --- Logging ------------------------------------------------------------
-log.open_file = "rtorrent", /config/rtorrent.log
-log.add_output = "info", "rtorrent"
+log.open_file  = "rtorrent", /config/rtorrent.log
+log.add_output = info, rtorrent
